@@ -1,0 +1,63 @@
+name: Deploy Apps Script
+
+# Pushes apps-script/ to the Sheet-bound Apps Script project and publishes
+# a new version of the EXISTING deployment (URL stays stable) whenever the
+# backend changes on main. Requires three repository secrets — see the
+# "Automated Apps Script deploys" section of the README. Until they are
+# set, the deploy job skips with a notice instead of failing.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps-script/**'
+      - '.github/workflows/deploy-apps-script.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+      SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+      DEPLOYMENT_ID: ${{ secrets.APPS_SCRIPT_DEPLOYMENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check configuration
+        id: config
+        run: |
+          if [ -z "$CLASPRC_JSON" ] || [ -z "$SCRIPT_ID" ] || [ -z "$DEPLOYMENT_ID" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Apps Script deploy skipped — add the CLASPRC_JSON, APPS_SCRIPT_ID and APPS_SCRIPT_DEPLOYMENT_ID secrets to enable it (README → Automated Apps Script deploys)."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.config.outputs.configured == 'true'
+        with:
+          node-version: 22
+      - name: Push code and publish new version of the existing deployment
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          npm install -g @google/clasp@2.4.2
+          echo "$CLASPRC_JSON" > ~/.clasprc.json
+          printf '{"scriptId":"%s","rootDir":"apps-script"}\n' "$SCRIPT_ID" > .clasp.json
+          clasp push -f
+          clasp deploy --deploymentId "$DEPLOYMENT_ID" --description "CI ${GITHUB_SHA::7}"
