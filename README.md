@@ -94,6 +94,55 @@ frozen version, not the editor's code**. Editing without deploying a new
 version changes nothing for the app. Redeploying an existing deployment
 keeps the same URL, so the phones don't need reconfiguring.
 
+## Automated Apps Script deploys (optional, recommended)
+
+Instead of pasting `Code.js` into the editor by hand after every change, the
+`Deploy Apps Script` workflow can do it: whenever a change under
+`apps-script/` lands on `main` (and the tests pass), CI pushes the code to
+your Apps Script project and publishes a new version of your **existing**
+deployment — same URL, phones unaffected, nothing to click.
+
+One-time setup (~10 minutes):
+
+1. **Enable the Apps Script API** for your Google account:
+   <https://script.google.com/home/usersettings> → *Google Apps Script API* → On.
+2. **Create credentials on your computer** (needs Node.js):
+   ```sh
+   npm install -g @google/clasp@2.4.2
+   clasp login
+   ```
+   A browser window asks you to authorize; afterwards your credentials are
+   in `~/.clasprc.json`. (Use exactly this clasp version — v3 changed the
+   credential format the workflow expects.)
+3. **Collect the two IDs:**
+   - *Script ID* — Apps Script editor → ⚙️ **Project Settings** → Script ID.
+   - *Deployment ID* — the long token in your Web App URL, between
+     `/macros/s/` and `/exec`.
+4. **Add three repository secrets** (GitHub → Settings → Secrets and
+   variables → Actions → *New repository secret*):
+
+   | Secret | Value |
+   |---|---|
+   | `CLASPRC_JSON` | the full contents of `~/.clasprc.json` |
+   | `APPS_SCRIPT_ID` | the Script ID |
+   | `APPS_SCRIPT_DEPLOYMENT_ID` | the Deployment ID |
+
+5. **Test it:** GitHub → Actions → *Deploy Apps Script* → **Run workflow**.
+   Green run = from now on the manual paste-and-redeploy dance is gone.
+
+Until the secrets exist, the workflow skips the deploy with a notice instead
+of failing, so nothing breaks if you never set this up.
+
+Notes:
+- The script's manifest now lives in the repo
+  (`apps-script/appsscript.json`) and is pushed along with the code: V8
+  runtime, web app set to *Execute as: Me* / *Who has access: Anyone*, and
+  the `Europe/Skopje` timezone for audit timestamps — edit it there if any
+  of that should differ.
+- `CLASPRC_JSON` is a credential for your Google account — treat it like a
+  password. Revoke it anytime at <https://myaccount.google.com/permissions>
+  (remove *clasp — The Apps Script CLI*).
+
 ## Optional: users & PINs (a named audit trail)
 
 Out of the box, anyone who opens the app page *and* has the Web App URL can
