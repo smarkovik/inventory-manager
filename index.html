@@ -10,6 +10,9 @@
 <meta name="theme-color" content="#f2f5fa" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#101418" media="(prefers-color-scheme: dark)">
 <title>Kiroki</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
@@ -38,6 +41,7 @@
   --warn-fg: #4d3b00;
   --snack-bg: #2d3135;
   --snack-fg: #f1f3f6;
+  --snack-action: #a8c7fa;
   --shadow: 0 1px 2px rgba(20,30,50,.10), 0 4px 14px rgba(20,30,50,.10);
 }
 @media (prefers-color-scheme: dark) {
@@ -59,6 +63,7 @@
     --warn-fg: #ffe08a;
     --snack-bg: #e2e6ec;
     --snack-fg: #1b2025;
+    --snack-action: #0b57d0;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.35);
   }
 }
@@ -256,6 +261,24 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
   border-radius: 999px;
   padding: 8px 10px;
 }
+.inv-qty.qty-zero { background: var(--remove); color: var(--on-remove); }
+.inv-qty.qty-low { background: var(--warn-bg); color: var(--warn-fg); }
+
+.act-list { display: flex; flex-direction: column; gap: 8px; }
+.act-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface-variant);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+.act-info { flex: 1; min-width: 0; }
+.act-name { font-weight: 500; overflow-wrap: anywhere; }
+.act-meta { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+.act-delta { font-weight: 700; white-space: nowrap; }
+.act-delta.pos { color: var(--add); }
+.act-delta.neg { color: var(--remove); }
 
 .qty { font-size: 72px; font-weight: 700; text-align: center; line-height: 1; letter-spacing: -2px; }
 .qty-label { text-align: center; margin-top: -6px; }
@@ -281,6 +304,9 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
   left: 50%;
   bottom: 24px;
   transform: translate(-50%, 16px);
+  display: flex;
+  align-items: center;
+  gap: 16px;
   background: var(--snack-bg);
   color: var(--snack-fg);
   padding: 13px 22px;
@@ -296,6 +322,20 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
   z-index: 50;
 }
 #snackbar.show { opacity: 1; transform: translate(-50%, 0); }
+#snackbar.show.actionable { pointer-events: auto; }
+#snackbar-action {
+  background: none;
+  border: none;
+  color: var(--snack-action);
+  font-family: inherit;
+  font-size: .95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  cursor: pointer;
+  padding: 6px 4px;
+  -webkit-tap-highlight-color: transparent;
+}
 </style>
 </head>
 <body>
@@ -358,6 +398,10 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
       <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h2v2H4zM8 6h12v2H8zM4 11h2v2H4zM8 11h12v2H8zM4 16h2v2H4zM8 16h12v2H8z" fill="currentColor"/></svg>
       <span data-i18n="home.viewInventory">View inventory</span>
     </button>
+    <button id="btn-activity" class="btn btn-tonal">
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm1-13h-2v6l5 3 1-1.7-4-2.3z" fill="currentColor"/></svg>
+      <span data-i18n="home.activity">Recent activity</span>
+    </button>
     <p id="home-user" class="muted center" hidden></p>
     <button id="btn-switch" class="btn btn-text" hidden data-i18n="home.switchUser">Switch user</button>
     <button id="btn-settings" class="btn btn-text" data-i18n="common.backendSettings">Backend settings</button>
@@ -367,6 +411,7 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
     <div class="card">
       <div id="reader"></div>
       <p id="scanner-hint" class="muted center" data-i18n="scanner.starting">Starting camera…</p>
+      <button id="btn-torch" class="btn btn-tonal" hidden>🔦</button>
       <button id="btn-cancel-scan" class="btn btn-tonal" data-i18n="common.cancel">Cancel</button>
     </div>
   </section>
@@ -377,10 +422,22 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
       <p id="inv-status" class="muted center"></p>
       <input id="inv-filter" class="input" type="search" autocomplete="off"
              placeholder="Filter by name or code…" data-i18n-placeholder="inv.filterPlaceholder">
+      <button id="btn-inv-sort" class="btn btn-text"></button>
       <p id="inv-error" class="error-text" hidden></p>
       <div id="inv-list" class="inv-list"></div>
       <button id="btn-inv-refresh" class="btn btn-tonal" data-i18n="inv.refresh">Refresh</button>
       <button id="btn-inv-back" class="btn btn-text" data-i18n="inv.back">Back</button>
+    </div>
+  </section>
+
+  <section id="screen-activity" class="screen">
+    <div class="card">
+      <h2 data-i18n="act.title">Recent activity</h2>
+      <p id="act-status" class="muted center"></p>
+      <p id="act-error" class="error-text" hidden></p>
+      <div id="act-list" class="act-list"></div>
+      <button id="btn-act-refresh" class="btn btn-tonal" data-i18n="inv.refresh">Refresh</button>
+      <button id="btn-act-back" class="btn btn-text" data-i18n="inv.back">Back</button>
     </div>
   </section>
 
@@ -427,7 +484,7 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
 
 </main>
 
-<div id="snackbar" role="status"></div>
+<div id="snackbar" role="status"><span id="snackbar-text"></span><button id="snackbar-action" type="button" hidden></button></div>
 
 <!-- Localisation dictionary. To adjust a translation, edit the text here;
      to add a language, copy a block, translate it, and extend detectLang()
@@ -466,11 +523,14 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
     "home.scan": "Scan a part",
     "home.hint": "Point the camera at a part's barcode or QR label to add or remove stock.",
     "home.viewInventory": "View inventory",
+    "home.activity": "Recent activity",
     "home.switchUser": "Switch user",
     "home.errEmptyScan": "The scanned code was empty — try again.",
     "scanner.starting": "Starting camera…",
     "scanner.point": "Point the camera at a barcode or QR label",
     "scanner.libFailed": "The barcode scanner library failed to load from both sources. Check the WiFi connection, then tap Scan again.",
+    "scanner.torchOn": "Turn torch on",
+    "scanner.torchOff": "Turn torch off",
     "camera.https": "Camera access needs the secure (HTTPS) address — open this app at its GitHub Pages URL.",
     "camera.blocked": "Camera access is blocked. Open your browser's settings for this site (tap the padlock or ᴀA icon in the address bar), allow Camera, then tap Scan again.",
     "camera.none": "No usable camera was found on this device.",
@@ -483,6 +543,8 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
     "part.scanNext": "Scan next part",
     "part.done": "Done",
     "part.stockSnack": "{name}: {qty} in stock",
+    "part.undo": "Undo",
+    "part.undone": "Undone — {name}: {qty} in stock",
     "part.belowZero": "Only {qty} in stock — cannot remove {n}.",
     "part.notEnough": "Not enough stock to remove that many.",
     "part.busyBackend": "The backend is busy with another update — try again in a moment.",
@@ -509,6 +571,10 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
     "inv.count": "{n} parts",
     "inv.countFiltered": "{shown} of {total} parts",
     "inv.rejected": "The backend rejected the request.",
+    "inv.sortLow": "Show low stock first",
+    "inv.sortName": "Sort by name",
+    "act.title": "Recent activity",
+    "act.empty": "No activity yet.",
     "net.timeout": "The backend took too long to respond (20 s). Check the WiFi and try again.",
     "net.unreachable": "Could not reach the backend. Check the WiFi and the Web App URL under Backend settings.",
     "net.badResponse": "The backend replied with something that is not JSON — usually a Google sign-in page. In Apps Script, make sure the deployment is set to \"Execute as: Me\" and \"Who has access: Anyone\".",
@@ -547,11 +613,14 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
     "home.scan": "Скенирај дел",
     "home.hint": "Насочете ја камерата кон баркодот или QR етикетата на делот за да додадете или извадите залиха.",
     "home.viewInventory": "Преглед на залиха",
+    "home.activity": "Последни промени",
     "home.switchUser": "Смени корисник",
     "home.errEmptyScan": "Скенираниот код беше празен — обидете се повторно.",
     "scanner.starting": "Камерата се вклучува…",
     "scanner.point": "Насочете ја камерата кон баркод или QR етикета",
     "scanner.libFailed": "Библиотеката за скенирање не се вчита од ниту еден извор. Проверете го WiFi-то и допрете Скенирај повторно.",
+    "scanner.torchOn": "Вклучи светло",
+    "scanner.torchOff": "Исклучи светло",
     "camera.https": "За камерата е потребна безбедна (HTTPS) адреса — отворете ја апликацијата на нејзината GitHub Pages адреса.",
     "camera.blocked": "Пристапот до камерата е блокиран. Отворете ги поставките на прелистувачот за оваа страница (допрете го катанчето или ᴀA во адресната лента), дозволете Камера, па допрете Скенирај повторно.",
     "camera.none": "Не е пронајдена камера на овој уред.",
@@ -564,6 +633,8 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
     "part.scanNext": "Скенирај следен дел",
     "part.done": "Готово",
     "part.stockSnack": "{name}: {qty} на залиха",
+    "part.undo": "Врати",
+    "part.undone": "Вратено — {name}: {qty} на залиха",
     "part.belowZero": "Само {qty} на залиха — не може да се извадат {n}.",
     "part.notEnough": "Нема доволно залиха за да се извади толку.",
     "part.busyBackend": "Серверот е зафатен со друга промена — обидете се повторно за момент.",
@@ -590,6 +661,10 @@ h2 { font-size: 1.35rem; font-weight: 600; text-align: center; }
     "inv.count": "{n} делови",
     "inv.countFiltered": "{shown} од {total} делови",
     "inv.rejected": "Серверот го одби барањето.",
+    "inv.sortLow": "Прво ниска залиха",
+    "inv.sortName": "Подреди по име",
+    "act.title": "Последни промени",
+    "act.empty": "Сè уште нема промени.",
     "net.timeout": "Серверот не одговори навреме (20 с). Проверете го WiFi-то и обидете се повторно.",
     "net.unreachable": "Не може да се воспостави врска со серверот. Проверете го WiFi-то и Web App URL адресата во Поставки за серверот.",
     "net.badResponse": "Серверот одговори со нешто што не е JSON — обично Google страница за најава. Во Apps Script, проверете дека deployment-от е поставен на \"Execute as: Me\" и \"Who has access: Anyone\".",
@@ -625,7 +700,8 @@ const SCANNER_CDNS = [
 ];
 
 const $ = (id) => document.getElementById(id);
-const SCREENS = ['setup', 'lock', 'home', 'scanner', 'inventory', 'busy', 'part', 'unknown'];
+const SCREENS = ['setup', 'lock', 'home', 'scanner', 'inventory', 'activity', 'busy', 'part', 'unknown'];
+const UNDO_SNACKBAR_MS = 4000;
 
 /* ------------------------------ languages ------------------------------
    Translations live in the JSON block at the bottom of this file.
@@ -678,6 +754,7 @@ function toggleLang() {
   applyI18n();
   updateSignedIn();
   if (screenActive('inventory')) renderInventory();
+  if (screenActive('activity')) renderActivity();
   showSnackbar(t('lang.switched'));
 }
 
@@ -688,8 +765,15 @@ let decodeHandled = false;
 let inFlight = false;
 let autoReturnTimer = null;
 let snackbarTimer = null;
+let snackbarAction = null;
 let scannerLibPromise = null;
 let setupReturnTo = 'home';
+let lastAdjust = null;     // { barcode, name, qty, delta } — offered on the snackbar
+let undoing = false;
+let torchOn = false;
+let audioCtx = null;
+let activityItems = [];
+let invSortLow = false;
 
 /* ------------------------------ utilities ------------------------------ */
 
@@ -713,12 +797,48 @@ function setChip(state, key) {
   $('status-text').textContent = t(key);
 }
 
-function showSnackbar(text) {
+function showSnackbar(text, opts) {
   const el = $('snackbar');
-  el.textContent = text;
+  const btn = $('snackbar-action');
+  $('snackbar-text').textContent = text;
+  snackbarAction = null;
+  if (opts && opts.actionLabel && opts.onAction) {
+    btn.textContent = opts.actionLabel;
+    btn.hidden = false;
+    snackbarAction = opts.onAction;
+    el.classList.add('actionable');
+  } else {
+    btn.hidden = true;
+    el.classList.remove('actionable');
+  }
   el.classList.add('show');
   clearTimeout(snackbarTimer);
-  snackbarTimer = setTimeout(() => el.classList.remove('show'), AUTO_RETURN_MS);
+  snackbarTimer = setTimeout(() => el.classList.remove('show'), (opts && opts.duration) || AUTO_RETURN_MS);
+}
+
+/* ------------------------------ scan sounds ----------------------------- */
+
+// Created on the Scan tap (a user gesture, which iOS requires for audio).
+function ensureAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  } catch (e) { audioCtx = null; }
+}
+
+function beep() {
+  if (!audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = 1175;
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.16);
+  } catch (e) { /* audio unavailable */ }
 }
 
 function scheduleAutoReturn() {
@@ -891,8 +1011,11 @@ function loadScannerLibrary() {
 async function startScanner() {
   clearAutoReturn();
   hideHomeError();
+  ensureAudio();
   showScreen('scanner');
   $('scanner-hint').textContent = t('scanner.starting');
+  $('btn-torch').hidden = true;
+  torchOn = false;
 
   try {
     await loadScannerLibrary();
@@ -931,6 +1054,7 @@ async function startScanner() {
       () => { /* per-frame decode misses are normal — ignore */ }
     );
     $('scanner-hint').textContent = t('scanner.point');
+    offerTorch();
   } catch (err) {
     await teardownScanner();
     showScreen('home');
@@ -952,12 +1076,33 @@ function cameraErrorMessage(err) {
   return t('camera.failed', { reason: s });
 }
 
+// Only offered where the camera supports it (mostly Android).
+function offerTorch() {
+  try {
+    const caps = scanner && scanner.getRunningTrackCapabilities();
+    if (caps && caps.torch) {
+      $('btn-torch').textContent = '🔦 ' + t('scanner.torchOn');
+      $('btn-torch').hidden = false;
+    }
+  } catch (e) { /* capability probing unsupported */ }
+}
+
+async function toggleTorch() {
+  if (!scanner) return;
+  try {
+    await scanner.applyVideoConstraints({ advanced: [{ torch: !torchOn }] });
+    torchOn = !torchOn;
+    $('btn-torch').textContent = '🔦 ' + t(torchOn ? 'scanner.torchOff' : 'scanner.torchOn');
+  } catch (e) { /* torch not applicable */ }
+}
+
 // The library can fire the success callback repeatedly per frame —
 // only the first decode of a session counts.
 async function onDecoded(text) {
   if (decodeHandled) return;
   decodeHandled = true;
   vibrate(60);
+  beep();
   await teardownScanner();
   lookupBarcode(String(text).trim());
 }
@@ -965,6 +1110,8 @@ async function onDecoded(text) {
 async function teardownScanner() {
   const s = scanner;
   scanner = null;
+  torchOn = false;
+  $('btn-torch').hidden = true;
   if (!s) return;
   try { await s.stop(); } catch (e) { /* was not running */ }
   try { s.clear(); } catch (e) { /* nothing to clear */ }
@@ -1044,11 +1191,18 @@ async function adjustBy(delta) {
       $('part-name').textContent = data.name;
       $('part-qty').textContent = data.qty;
       vibrate(40);
-      showSnackbar(t('part.stockSnack', { name: data.name, qty: data.qty }));
+      if (undoing) {
+        // Confirmation of the undo itself — no further undo, no auto-return.
+        showSnackbar(t('part.undone', { name: data.name, qty: data.qty }));
+      } else {
+        lastAdjust = { barcode: currentPart.barcode, name: data.name, qty: data.qty, delta: delta };
+        showSnackbar(t('part.stockSnack', { name: data.name, qty: data.qty }),
+          { actionLabel: t('part.undo'), onAction: undoLastAdjust, duration: UNDO_SNACKBAR_MS });
+      }
       if (data.warning === 'audit_failed') {
         // Stay on the card so the warning is actually seen — no auto-return.
         showPartWarning(t('part.auditWarnAdjust'));
-      } else {
+      } else if (!undoing) {
         scheduleAutoReturn();
       }
     } else if (data.error === 'below_zero') {
@@ -1075,6 +1229,25 @@ async function adjustBy(delta) {
   } finally {
     setDisabled(['btn-add', 'btn-remove', 'btn-scan-next'], false);
     inFlight = false;
+  }
+}
+
+// The snackbar's UNDO: send the opposite delta. Works even after the
+// auto-return has reopened the scanner (the snackbar floats above it).
+async function undoLastAdjust() {
+  if (inFlight) return;
+  const u = lastAdjust;
+  lastAdjust = null;
+  if (!u) return;
+  clearAutoReturn();
+  await teardownScanner();
+  currentPart = { barcode: u.barcode, name: u.name, qty: u.qty };
+  showPartCard(currentPart);
+  undoing = true;
+  try {
+    await adjustBy(-u.delta);
+  } finally {
+    undoing = false;
   }
 }
 
@@ -1175,8 +1348,12 @@ function renderInventory() {
   const filter = $('inv-filter').value.trim().toLowerCase();
   const list = $('inv-list');
   list.innerHTML = '';
-  const shown = inventoryItems.filter((it) =>
+  $('btn-inv-sort').textContent = t(invSortLow ? 'inv.sortName' : 'inv.sortLow');
+  let shown = inventoryItems.filter((it) =>
     !filter || it.name.toLowerCase().includes(filter) || it.barcode.toLowerCase().includes(filter));
+  if (invSortLow) {
+    shown = shown.slice().sort((a, b) => a.qty - b.qty || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+  }
   for (const it of shown) {
     const row = document.createElement('button');
     row.type = 'button';
@@ -1189,7 +1366,7 @@ function renderInventory() {
     code.textContent = it.barcode;
     info.appendChild(code);
     const qty = document.createElement('span');
-    qty.className = 'inv-qty';
+    qty.className = 'inv-qty' + (it.qty === 0 ? ' qty-zero' : (it.qty <= 2 ? ' qty-low' : ''));
     qty.textContent = it.qty;
     row.appendChild(info);
     row.appendChild(qty);
@@ -1203,6 +1380,70 @@ function renderInventory() {
     $('inv-status').textContent = t('inv.countFiltered', { shown: shown.length, total: inventoryItems.length });
   } else {
     $('inv-status').textContent = t('inv.count', { n: inventoryItems.length });
+  }
+}
+
+/* ---------------------------- recent activity --------------------------- */
+
+async function openActivity() {
+  clearAutoReturn();
+  $('act-error').hidden = true;
+  $('act-status').textContent = t('inv.loading');
+  $('act-list').innerHTML = '';
+  showScreen('activity');
+  try {
+    const data = await apiGet(withPin({ action: 'history' }));
+    if (data.ok) {
+      activityItems = data.items || [];
+      renderActivity();
+    } else if (data.error === 'unauthorized') {
+      signOut();
+      showLockScreen(t('lock.promptDefault'));
+    } else {
+      $('act-status').textContent = '';
+      showActError(data.message || t('inv.rejected'));
+    }
+  } catch (err) {
+    $('act-status').textContent = '';
+    showActError(err.message);
+  }
+}
+
+function showActError(msg) {
+  $('act-error').textContent = msg;
+  $('act-error').hidden = false;
+}
+
+function formatTs(ts) {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return String(ts || '');
+  return d.toLocaleString(currentLang === 'mk' ? 'mk-MK' : 'en-GB',
+    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function renderActivity() {
+  const list = $('act-list');
+  list.innerHTML = '';
+  $('act-status').textContent = activityItems.length ? '' : t('act.empty');
+  for (const it of activityItems) {
+    const row = document.createElement('div');
+    row.className = 'act-row';
+    const info = document.createElement('div');
+    info.className = 'act-info';
+    const name = document.createElement('div');
+    name.className = 'act-name';
+    name.textContent = it.name || it.barcode;
+    const meta = document.createElement('div');
+    meta.className = 'act-meta';
+    meta.textContent = formatTs(it.ts) + (it.user ? ' · ' + it.user : '');
+    info.appendChild(name);
+    info.appendChild(meta);
+    const delta = document.createElement('span');
+    delta.className = 'act-delta ' + (it.change < 0 ? 'neg' : 'pos');
+    delta.textContent = (it.change > 0 ? '+' : '') + it.change + ' → ' + it.qty;
+    row.appendChild(info);
+    row.appendChild(delta);
+    list.appendChild(row);
   }
 }
 
@@ -1330,10 +1571,21 @@ function boot() {
 
   $('lang-toggle').addEventListener('click', toggleLang);
   $('btn-scan').addEventListener('click', startScanner);
+  $('btn-torch').addEventListener('click', toggleTorch);
   $('btn-inventory').addEventListener('click', openInventory);
   $('btn-inv-refresh').addEventListener('click', openInventory);
   $('btn-inv-back').addEventListener('click', () => showScreen('home'));
   $('inv-filter').addEventListener('input', renderInventory);
+  $('btn-inv-sort').addEventListener('click', () => { invSortLow = !invSortLow; renderInventory(); });
+  $('btn-activity').addEventListener('click', openActivity);
+  $('btn-act-refresh').addEventListener('click', openActivity);
+  $('btn-act-back').addEventListener('click', () => showScreen('home'));
+  $('snackbar-action').addEventListener('click', () => {
+    const fn = snackbarAction;
+    snackbarAction = null;
+    $('snackbar').classList.remove('show');
+    if (fn) fn();
+  });
   $('btn-settings').addEventListener('click', () => { clearAutoReturn(); setupReturnTo = 'home'; openSetup(); });
   $('lock-settings').addEventListener('click', () => { setupReturnTo = 'lock'; openSetup(); });
   $('btn-switch').addEventListener('click', () => { signOut(); showLockScreen(); });

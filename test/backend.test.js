@@ -13,6 +13,7 @@ const {
   actionForDelta,
   buildAuditRow,
   buildInventoryList,
+  buildHistory,
   parseBody,
   parseUserRows,
   authenticatePin,
@@ -170,6 +171,24 @@ test('inventory list: blank-barcode rows skipped, sorted by name, values coerced
     { barcode: 'B2', name: 'washer', qty: 0 },
   ]);
   assert.deepEqual(buildInventoryList([]), []);
+});
+
+test('history: newest first, limited, values coerced', () => {
+  const rows = [];
+  for (let i = 1; i <= 60; i++) {
+    rows.push([new Date(Date.UTC(2026, 0, 1, 0, i)), 'B' + i, 'Part ' + i, 'add', 1, i, 'Marko']);
+  }
+  const items = buildHistory(rows, 50);
+  assert.equal(items.length, 50);
+  assert.equal(items[0].barcode, 'B60');
+  assert.equal(items[0].ts, '2026-01-01T01:00:00.000Z');
+  assert.equal(items[49].barcode, 'B11');
+  const one = buildHistory([['2026-07-20T10:00:00Z', 42, null, 'remove', '-1', '3.9', null]], 50)[0];
+  assert.deepEqual(one, {
+    ts: '2026-07-20T10:00:00Z', barcode: '42', name: '', action: 'remove',
+    change: -1, qty: 3, user: '',
+  });
+  assert.deepEqual(buildHistory([], 50), []);
 });
 
 test('POST body parsing accepts only a JSON object', () => {

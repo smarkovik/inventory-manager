@@ -151,6 +151,27 @@ function buildInventoryList(values) {
   return items;
 }
 
+// Raw Audit rows ([Timestamp, Barcode, Part Name, Action, Qty Change,
+// Resulting Quantity, User]) → the most recent `limit` movements, newest
+// first, with values coerced for the client.
+function buildHistory(values, limit) {
+  const start = Math.max(0, values.length - limit);
+  const items = [];
+  for (let i = values.length - 1; i >= start; i--) {
+    const r = values[i];
+    items.push({
+      ts: r[0] instanceof Date ? r[0].toISOString() : String(r[0] === null || r[0] === undefined ? '' : r[0]),
+      barcode: normalizeBarcode(r[1]),
+      name: String(r[2] === null || r[2] === undefined ? '' : r[2]),
+      action: String(r[3] === null || r[3] === undefined ? '' : r[3]),
+      change: coerceQty(r[4]),
+      qty: coerceQty(r[5]),
+      user: String(r[6] === null || r[6] === undefined ? '' : r[6])
+    });
+  }
+  return items;
+}
+
 // A POST body is only usable if it parses to a plain JSON object.
 function parseBody(text) {
   if (typeof text !== 'string' || text === '') return null;
@@ -224,6 +245,13 @@ function doGet(e) {
       const values = lastRow < 2 ? [] : inv.getRange(2, 1, lastRow - 1, 3).getValues();
       const items = buildInventoryList(values);
       return jsonResponse({ ok: true, items: items, count: items.length });
+    }
+    if (params.action === 'history') {
+      if (!auth.ok) return jsonResponse(unauthorized(auth.message));
+      const audit = sheets.audit;
+      const lastRow = audit.getLastRow();
+      const values = lastRow < 2 ? [] : audit.getRange(2, 1, lastRow - 1, 7).getValues();
+      return jsonResponse({ ok: true, items: buildHistory(values, 50) });
     }
     if (params.action === 'lookup') {
       if (!auth.ok) return jsonResponse(unauthorized(auth.message));
@@ -411,6 +439,7 @@ if (typeof module !== 'undefined' && module.exports) {
     actionForDelta: actionForDelta,
     buildAuditRow: buildAuditRow,
     buildInventoryList: buildInventoryList,
+    buildHistory: buildHistory,
     parseBody: parseBody,
     normalizePin: normalizePin,
     parseUserRows: parseUserRows,
